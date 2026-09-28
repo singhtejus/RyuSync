@@ -85,8 +85,14 @@ jobs:
           LIBHAC_PROJECT="$(find .ci-libhac-source -name '*.csproj' -print -quit)"
           test -n "$LIBHAC_PROJECT"
 
-          dotnet build "$LIBHAC_PROJECT" -c Release \
+          dotnet restore "$LIBHAC_PROJECT" \
+            --configfile nuget.ci.config \
             -p:TargetFramework=net10.0 \
+            -p:TargetFrameworks=net10.0
+
+          dotnet build "$LIBHAC_PROJECT" -c Release --no-restore \
+            -p:TargetFramework=net10.0 \
+            -p:TargetFrameworks=net10.0 \
             -p:LangVersion=preview \
             -p:AllowUnsafeBlocks=true \
             -o .ci-libhac-rebuilt
