@@ -13,14 +13,9 @@ namespace Ryujinx.Ava.UI.Windows
             InitializeComponent();
 
             _session.StateChanged += Session_StateChanged;
+            Closed += (_, _) => _session.StateChanged -= Session_StateChanged;
             _session.StartListening();
             UpdateUi();
-        }
-
-        protected override void OnClosed(EventArgs e)
-        {
-            _session.StateChanged -= Session_StateChanged;
-            base.OnClosed(e);
         }
 
         private async void InviteButton_OnClick(object sender, Avalonia.Interactivity.RoutedEventArgs e)
