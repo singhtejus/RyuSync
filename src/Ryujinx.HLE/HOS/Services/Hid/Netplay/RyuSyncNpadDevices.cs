@@ -8,6 +8,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         private bool _pausedForBarrier;
         private bool _pausedForInput;
         private bool _gameStartAnnounced;
+        private long _lastAppliedPlaybackTick = -1;
 
         public RyuSyncNpadDevices(Switch device, bool active = true) : base(device, active)
         {
@@ -69,6 +70,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             GamepadInput localInput = default;
             bool foundLocalInput = false;
 
+            // Each computer's configured local Player 1 controller is the physical source.
+            // The session remaps it to shared P1 for the host or shared P2 for the guest.
             for (int i = 0; i < states.Count; i++)
             {
                 if (states[i].PlayerId == PlayerIndex.Player1)
@@ -107,8 +110,16 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                     Logger.Debug?.Print(LogClass.Hid, $"RyuSync input resumed at tick {session.PlaybackTick}.");
                 }
 
-                GamepadInput[] synchronizedInputs = [p1, p2];
-                base.Update(synchronizedInputs);
+                // NpadManager itself runs roughly every millisecond. Writing the same synchronized
+                // state on every call would let the two machines accumulate different HID sampling
+                // counts. Commit exactly one P1/P2 batch for each 60 Hz RyuSync tick instead.
+                long playbackTick = session.PlaybackTick;
+                if (playbackTick != _lastAppliedPlaybackTick)
+                {
+                    GamepadInput[] synchronizedInputs = [p1, p2];
+                    base.Update(synchronizedInputs);
+                    _lastAppliedPlaybackTick = playbackTick;
+                }
             }
             else
             {
@@ -148,6 +159,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
 
             _pausedForBarrier = false;
             _pausedForInput = false;
+            _lastAppliedPlaybackTick = -1;
         }
     }
 }
