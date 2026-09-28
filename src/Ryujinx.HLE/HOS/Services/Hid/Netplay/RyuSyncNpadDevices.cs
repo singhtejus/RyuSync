@@ -127,6 +127,17 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             }
         }
 
+        public new void UpdateSixAxis(IList<SixAxisInput> states)
+        {
+            if (!RyuSyncSession.Instance.IsSessionEstablished)
+            {
+                base.UpdateSixAxis(states);
+            }
+
+            // Motion is intentionally unsupported in RyuSync v1. Do not feed independently sampled
+            // motion data into the two emulators while netplay is active.
+        }
+
         private void PauseForBarrier()
         {
             if (_pausedForBarrier || _device.System.IsPaused)
