@@ -64,6 +64,12 @@
             IsVisible="{Binding IsGrid}">
             <TextBlock Text="{ext:Locale CommonShowNames}" />
         </CheckBox>
+        <Button
+            MinWidth="82"
+            Margin="8,2,5,2"
+            VerticalAlignment="Stretch"
+            Click="RyuSyncButton_OnClick"
+            Content="RyuSync" />
         <TextBox
             Name="SearchBox"
             MinWidth="200"
