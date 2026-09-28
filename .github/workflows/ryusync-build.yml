@@ -39,8 +39,26 @@ jobs:
       - name: Show .NET version
         run: dotnet --info
 
+      - name: Build pinned LibHac package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf .ci-libhac .packages
+          mkdir -p .packages
+          git clone https://gitlab.com/ryujinx-classic/LibHac.git .ci-libhac
+          cd .ci-libhac
+          git checkout e39169ab5053ff179b7fef38f624dfc608d2596c
+          LIBHAC_PROJECT="$(find . -name 'LibHac.csproj' -print -quit)"
+          test -n "$LIBHAC_PROJECT"
+          dotnet pack "$LIBHAC_PROJECT" -c Release -o ../.packages -p:PackageId=Ryujinx.LibHac -p:Version=0.21.0-alpha.133
+          cd ..
+          ls -la .packages
+
+      - name: Restore RyuSync without git.ryujinx.app
+        run: dotnet restore src/Ryujinx/Ryujinx.csproj --configfile nuget.ci.config -r ${{ matrix.rid }}
+
       - name: Publish Ryujinx
-        run: dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o publish/${{ matrix.rid }}
+        run: dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r ${{ matrix.rid }} --self-contained true --no-restore -o publish/${{ matrix.rid }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
