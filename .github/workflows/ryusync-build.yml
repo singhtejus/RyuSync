@@ -39,6 +39,9 @@ jobs:
       - name: Show .NET version
         run: dotnet --info
 
+      - name: Test RyuSync controller transport
+        run: dotnet run --project tests/RyuSync.NetworkTests -c Release
+
       - name: Build verified LibHac source
         shell: bash
         run: |

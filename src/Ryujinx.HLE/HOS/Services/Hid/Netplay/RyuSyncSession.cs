@@ -351,6 +351,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             p2 = default;
 
             byte[] packetToSend = null;
+            bool synchronized = false;
             bool result;
 
             lock (_sync)
@@ -384,6 +385,12 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                     else if (_localFrames.TryGetValue(_playbackTick, out GamepadInput local) &&
                              _remoteFrames.TryGetValue(_playbackTick, out GamepadInput remote))
                     {
+                        if (_playbackTick == _inputDelayFrames)
+                        {
+                            _status = $"Synchronized - {_inputDelayFrames} frame input delay";
+                            synchronized = true;
+                        }
+
                         if (_role == RyuSyncRole.Host)
                         {
                             local.PlayerId = PlayerIndex.Player1;
@@ -431,6 +438,12 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             if (packetToSend != null)
             {
                 SendInputPacket(packetToSend);
+            }
+
+            if (synchronized)
+            {
+                Logger.Info?.Print(LogClass.Hid, "RyuSync received peer input; synchronized playback started.");
+                RaiseStateChanged();
             }
 
             return result;
@@ -491,13 +504,21 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         private void InitializeControlConnection(TcpClient client, RyuSyncRole role)
         {
             IPEndPoint remoteEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
+            IPAddress remoteAddress = remoteEndPoint?.Address;
+
+            // Dual-mode TCP clients expose IPv4 peers as ::ffff:a.b.c.d. Our UDP
+            // socket is IPv4, so normalize before sending or comparing senders.
+            if (remoteAddress?.IsIPv4MappedToIPv6 == true)
+            {
+                remoteAddress = remoteAddress.MapToIPv4();
+            }
 
             lock (_sync)
             {
                 _controlClient = client;
                 _role = role;
-                _remoteDisplayName = remoteEndPoint?.Address.ToString() ?? "peer";
-                _remoteInputEndpoint = remoteEndPoint == null ? null : new IPEndPoint(remoteEndPoint.Address, InputPort);
+                _remoteDisplayName = remoteAddress?.ToString() ?? "peer";
+                _remoteInputEndpoint = remoteAddress == null ? null : new IPEndPoint(remoteAddress, InputPort);
 
                 NetworkStream stream = client.GetStream();
                 _controlWriter = new StreamWriter(stream, new UTF8Encoding(false), 1024, true)
@@ -507,6 +528,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 };
             }
 
+            Logger.Info?.Print(LogClass.Hid, $"RyuSync {role}: controller input peer is {remoteAddress}:{InputPort}.");
             EnsureUdpStarted();
             _ = Task.Run(() => ControlReadLoopAsync(client));
             RaiseStateChanged();
@@ -628,9 +650,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 _nextInputTickTimestamp = Stopwatch.GetTimestamp();
                 _lastUdpSendTimestamp = 0;
                 _gameplayClockStarted = true;
-                _status = $"Synchronized - {_inputDelayFrames} frame input delay";
+                _status = "Launch barrier released; waiting for peer controller input";
             }
 
+            Logger.Info?.Print(LogClass.Hid, "RyuSync launch barrier released; waiting for peer controller input.");
             RaiseStateChanged();
         }
 

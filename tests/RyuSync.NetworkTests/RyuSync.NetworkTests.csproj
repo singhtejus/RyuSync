@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Exercise the production session without emulator or external package dependencies. -->
+    <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncSession.cs" Link="RyuSyncSession.cs" />
+    <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/HidDevices/Types/GamepadInput.cs" Link="GamepadInput.cs" />
+    <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/HidDevices/Types/JoystickPosition.cs" Link="JoystickPosition.cs" />
+    <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Types/Npad/PlayerIndex.cs" Link="PlayerIndex.cs" />
+    <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Types/Npad/ControllerKeys.cs" Link="ControllerKeys.cs" />
+  </ItemGroup>
+</Project>
