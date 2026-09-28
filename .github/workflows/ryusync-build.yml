@@ -39,62 +39,79 @@ jobs:
       - name: Show .NET version
         run: dotnet --info
 
-      - name: Build pinned LibHac from source
+      - name: Build verified LibHac source
         shell: bash
         run: |
           set -euxo pipefail
 
-          LIBHAC_COMMIT="e39169ab5053ff179b7fef38f624dfc608d2596c"
-          rm -rf .ci-libhac .packages
+          # This source and commit were verified through GitHub before this
+          # workflow was committed. Do not add fallback mirrors here.
+          LIBHAC_REPO="https://github.com/sinjunyoung/RomForge.git"
+          LIBHAC_COMMIT="8202eb04c7158906171d07e40a0530f0f5d41f34"
+          LIBHAC_VERSION="0.21.1"
+
+          rm -rf .ci-romforge .packages
           mkdir -p .packages
 
-          # Ryubing moved LibHac to its own repository after the original
-          # upstream disappeared. Try the surviving/current locations, but
-          # accept a repository only if it contains the exact revision used
-          # by Ryubing when it introduced 0.21.0-alpha.133.
-          found=0
-          for repo in \
-            https://git.greemdev.net/projects/LibHac.git \
-            https://git.greemdev.net/projects/libhac.git \
-            https://git.ryujinx.app/ryubing/libhac.git \
-            https://git.ryujinx.app/projects/LibHac.git
-          do
-            echo "Trying LibHac source: $repo"
-            rm -rf .ci-libhac
+          git clone --filter=blob:none --no-checkout "$LIBHAC_REPO" .ci-romforge
+          git -C .ci-romforge fetch --depth=1 origin "$LIBHAC_COMMIT"
+          git -C .ci-romforge checkout --detach "$LIBHAC_COMMIT"
+          test "$(git -C .ci-romforge rev-parse HEAD)" = "$LIBHAC_COMMIT"
 
-            if ! git clone "$repo" .ci-libhac; then
-              continue
-            fi
+          # RomForge carries extra NSZ compression code on top of LibHac.
+          # Ryujinx does not need that code, and it introduces RomForge-only
+          # dependencies. Remove only those additions before packing LibHac.
+          rm -rf .ci-romforge/LibHac/Nsz
 
-            if git -C .ci-libhac cat-file -e "${LIBHAC_COMMIT}^{commit}" 2>/dev/null; then
-              git -C .ci-libhac checkout --detach "$LIBHAC_COMMIT"
-              found=1
-              break
-            fi
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
 
-            echo "Repository does not contain required LibHac revision $LIBHAC_COMMIT"
-          done
+          project = Path('.ci-romforge/LibHac/LibHac.csproj')
+          tree = ET.parse(project)
+          root = tree.getroot()
 
-          if [ "$found" -ne 1 ]; then
-            echo "Could not locate the exact Ryubing LibHac source revision $LIBHAC_COMMIT." >&2
-            exit 1
-          fi
+          for item_group in list(root.findall('ItemGroup')):
+              for child in list(item_group):
+                  include = child.attrib.get('Include', '')
+                  if child.tag == 'PackageReference' and include in {'Blake3', 'ZstdSharp.Port'}:
+                      item_group.remove(child)
+                  elif child.tag == 'ProjectReference':
+                      item_group.remove(child)
+              if len(item_group) == 0:
+                  root.remove(item_group)
 
-          LIBHAC_PROJECT="$(find .ci-libhac -path '*/LibHac/LibHac.csproj' -print -quit)"
-          if [ -z "$LIBHAC_PROJECT" ]; then
-            LIBHAC_PROJECT="$(find .ci-libhac -name 'LibHac.csproj' -print -quit)"
-          fi
-          test -n "$LIBHAC_PROJECT"
+          tree.write(project, encoding='utf-8', xml_declaration=True)
+          PY
 
-          # Never allow this dependency build to fall back to the dead
-          # git.ryujinx.app NuGet registry.
-          dotnet restore "$LIBHAC_PROJECT" --configfile "$GITHUB_WORKSPACE/nuget.ci.config"
-          dotnet pack "$LIBHAC_PROJECT" -c Release --no-restore -o "$GITHUB_WORKSPACE/.packages" \
+          # Only the local feed and nuget.org are available to this build.
+          dotnet restore .ci-romforge/LibHac/LibHac.csproj \
+            --configfile "$GITHUB_WORKSPACE/nuget.ci.config"
+
+          dotnet pack .ci-romforge/LibHac/LibHac.csproj \
+            -c Release --no-restore \
+            -o "$GITHUB_WORKSPACE/.packages" \
             -p:PackageId=Ryujinx.LibHac \
-            -p:Version=0.21.0-alpha.133
+            -p:Version="$LIBHAC_VERSION"
 
-          test -f .packages/Ryujinx.LibHac.0.21.0-alpha.133.nupkg
+          test -f ".packages/Ryujinx.LibHac.${LIBHAC_VERSION}.nupkg"
           ls -la .packages
+
+      - name: Select verified LibHac version for CI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('Directory.Packages.props')
+          text = path.read_text(encoding='utf-8')
+          old = '<PackageVersion Include="Ryujinx.LibHac" Version="0.21.0-alpha.133" />'
+          new = '<PackageVersion Include="Ryujinx.LibHac" Version="0.21.1" />'
+          if old not in text:
+              raise SystemExit('Expected Ryujinx.LibHac 0.21.0-alpha.133 pin was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: Restore RyuSync without git.ryujinx.app
         run: dotnet restore src/Ryujinx/Ryujinx.csproj --configfile nuget.ci.config -r ${{ matrix.rid }}
