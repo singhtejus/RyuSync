@@ -39,19 +39,64 @@ jobs:
       - name: Show .NET version
         run: dotnet --info
 
-      - name: Build pinned LibHac package
+      - name: Recover pinned LibHac package
         shell: bash
         run: |
           set -euxo pipefail
-          rm -rf .ci-libhac .packages
-          mkdir -p .packages
-          git clone https://gitlab.com/ryujinx-classic/LibHac.git .ci-libhac
-          cd .ci-libhac
-          git checkout e39169ab5053ff179b7fef38f624dfc608d2596c
-          LIBHAC_PROJECT="$(find . -name 'LibHac.csproj' -print -quit)"
-          test -n "$LIBHAC_PROJECT"
-          dotnet pack "$LIBHAC_PROJECT" -c Release -o ../.packages -p:PackageId=Ryujinx.LibHac -p:Version=0.21.0-alpha.133
-          cd ..
+          rm -rf .ci-nextendo .ci-dump .ci-tools .ci-libhac-pack .packages
+          mkdir -p .ci-nextendo .ci-dump .ci-tools .ci-libhac-pack .packages
+
+          # Nextendo v1.8.8 is built from source that pins exactly
+          # Ryujinx.LibHac 0.21.0-alpha.133, matching this RyuSync tree.
+          curl -fL --retry 5 --retry-delay 2 \
+            -o .ci-nextendo/nextendo.zip \
+            https://github.com/NextendoNetwork/Ryujinx-Nextendo/releases/download/v1.8.8/Nextendo-1.8.8-win-x64.zip
+
+          python - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('.ci-nextendo/nextendo.zip') as z:
+              z.extractall('.ci-nextendo/extracted')
+          PY
+
+          dotnet tool install --tool-path .ci-tools ilspycmd --version 11.1.0.9782
+
+          found=0
+          while IFS= read -r exe; do
+            rm -rf .ci-dump/current
+            mkdir -p .ci-dump/current
+            .ci-tools/ilspycmd -d -o .ci-dump/current "$exe" || true
+            libhac="$(find .ci-dump/current -type f \( -iname 'LibHac.dll' -o -iname 'Ryujinx.LibHac.dll' \) -print -quit)"
+            if [ -n "$libhac" ]; then
+              cp "$libhac" .ci-libhac-pack/LibHac.dll
+              found=1
+              break
+            fi
+          done < <(find .ci-nextendo/extracted -type f -iname '*.exe')
+
+          if [ "$found" -ne 1 ]; then
+            echo 'Could not recover LibHac.dll from the verified v1.8.8 bundle.' >&2
+            find .ci-nextendo/extracted -maxdepth 3 -type f | sort >&2
+            exit 1
+          fi
+
+          cat > .ci-libhac-pack/Ryujinx.LibHac.csproj <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>net10.0</TargetFramework>
+              <PackageId>Ryujinx.LibHac</PackageId>
+              <Version>0.21.0-alpha.133</Version>
+              <IncludeBuildOutput>false</IncludeBuildOutput>
+              <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+              <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+            </PropertyGroup>
+            <ItemGroup>
+              <None Include="LibHac.dll" Pack="true" PackagePath="lib/net10.0/" />
+            </ItemGroup>
+          </Project>
+          EOF
+
+          dotnet pack .ci-libhac-pack/Ryujinx.LibHac.csproj -c Release -o .packages
+          test -f .packages/Ryujinx.LibHac.0.21.0-alpha.133.nupkg
           ls -la .packages
 
       - name: Restore RyuSync without git.ryujinx.app
