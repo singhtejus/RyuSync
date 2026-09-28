@@ -39,12 +39,12 @@ jobs:
       - name: Show .NET version
         run: dotnet --info
 
-      - name: Recover pinned LibHac package
+      - name: Recover and rebuild pinned LibHac package
         shell: bash
         run: |
           set -euxo pipefail
-          rm -rf .ci-nextendo .ci-dump .ci-tools .ci-libhac-pack .packages
-          mkdir -p .ci-nextendo .ci-dump .ci-tools .ci-libhac-pack .packages
+          rm -rf .ci-nextendo .ci-dump .ci-tools .ci-libhac-source .ci-libhac-rebuilt .ci-libhac-pack .packages
+          mkdir -p .ci-nextendo .ci-dump .ci-tools .ci-libhac-source .ci-libhac-rebuilt .ci-libhac-pack .packages
 
           # Nextendo v1.8.8 is built from source that pins exactly
           # Ryujinx.LibHac 0.21.0-alpha.133, matching this RyuSync tree.
@@ -67,7 +67,7 @@ jobs:
             .ci-tools/ilspycmd -d -o .ci-dump/current "$exe" || true
             libhac="$(find .ci-dump/current -type f \( -iname 'LibHac.dll' -o -iname 'Ryujinx.LibHac.dll' \) -print -quit)"
             if [ -n "$libhac" ]; then
-              cp "$libhac" .ci-libhac-pack/LibHac.dll
+              cp "$libhac" .ci-libhac-pack/LibHac.runtime.dll
               found=1
               break
             fi
@@ -75,9 +75,25 @@ jobs:
 
           if [ "$found" -ne 1 ]; then
             echo 'Could not recover LibHac.dll from the verified v1.8.8 bundle.' >&2
-            find .ci-nextendo/extracted -maxdepth 3 -type f | sort >&2
             exit 1
           fi
+
+          # The published bundle contains a runtime assembly that references
+          # System.Private.CoreLib directly. Decompile and rebuild it against
+          # the .NET 10 reference assemblies so Roslyn can consume it normally.
+          .ci-tools/ilspycmd -p -o .ci-libhac-source .ci-libhac-pack/LibHac.runtime.dll
+          LIBHAC_PROJECT="$(find .ci-libhac-source -name '*.csproj' -print -quit)"
+          test -n "$LIBHAC_PROJECT"
+
+          dotnet build "$LIBHAC_PROJECT" -c Release \
+            -p:TargetFramework=net10.0 \
+            -p:LangVersion=preview \
+            -p:AllowUnsafeBlocks=true \
+            -o .ci-libhac-rebuilt
+
+          REBUILT_LIBHAC="$(find .ci-libhac-rebuilt -maxdepth 1 -type f -iname 'LibHac.dll' -print -quit)"
+          test -n "$REBUILT_LIBHAC"
+          cp "$REBUILT_LIBHAC" .ci-libhac-pack/LibHac.dll
 
           cat > .ci-libhac-pack/Ryujinx.LibHac.csproj <<'EOF'
           <Project Sdk="Microsoft.NET.Sdk">
