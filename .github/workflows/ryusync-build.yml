@@ -1,0 +1,54 @@
+name: RyuSync Builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ryusync-netplay-v1
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            rid: win-x64
+            artifact: RyuSync-Windows-x64
+          - name: macOS Apple Silicon
+            os: macos-14
+            rid: osx-arm64
+            artifact: RyuSync-macOS-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout RyuSync
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Show .NET version
+        run: dotnet --info
+
+      - name: Publish Ryujinx
+        run: dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o publish/${{ matrix.rid }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: publish/${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 14
