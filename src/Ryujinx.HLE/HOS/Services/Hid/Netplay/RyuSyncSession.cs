@@ -537,15 +537,17 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             }
             finally
             {
+                bool disconnect;
+
                 lock (_sync)
                 {
-                    if (!ReferenceEquals(owner, _controlClient) || _disconnecting)
-                    {
-                        return;
-                    }
+                    disconnect = ReferenceEquals(owner, _controlClient) && !_disconnecting;
                 }
 
-                DisconnectInternal("Peer disconnected", false);
+                if (disconnect)
+                {
+                    DisconnectInternal("Peer disconnected", false);
+                }
             }
         }
 
