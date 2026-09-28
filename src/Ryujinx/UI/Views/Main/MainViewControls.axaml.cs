@@ -19,14 +19,13 @@ namespace Ryujinx.Ava.UI.Views.Main
         public MainViewControls()
         {
             InitializeComponent();
-
-            RyuSyncSession.Instance.InvitationReceived += RyuSyncSession_InvitationReceived;
             RyuSyncSession.Instance.StartListening();
         }
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
+            RyuSyncSession.Instance.InvitationReceived += RyuSyncSession_InvitationReceived;
 
             if (VisualRoot is MainWindow window)
             {
