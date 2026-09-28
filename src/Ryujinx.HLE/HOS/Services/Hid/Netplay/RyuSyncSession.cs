@@ -255,7 +255,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
 
             RaiseStateChanged();
 
-            TcpClient client = new(AddressFamily.InterNetwork);
+            TcpClient client = new();
 
             try
             {
@@ -399,15 +399,14 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                             _currentP2 = local;
                         }
 
-                        _localFrames.Remove(_playbackTick);
+                        // Retain recently consumed local frames so the peer can recover from a
+                        // one-sided dropped packet. Remote frames can be discarded after use.
                         _remoteFrames.Remove(_playbackTick);
                         _hasCurrentPair = true;
                         AdvancePlaybackTickLocked(now);
                     }
                     else
                     {
-                        // Keep retransmitting the recent input window while stalled. Progression itself
-                        // remains gated until the matching remote tick arrives.
                         if (packetToSend == null && now - _lastUdpSendTimestamp >= Stopwatch.Frequency / 250)
                         {
                             packetToSend = BuildInputPacketLocked();
@@ -639,7 +638,21 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             _nextInputTickTimestamp = now + InputFrameTicks;
 
             long oldestUsefulTick = Math.Max(0, _playbackTick - RedundantInputCount);
+            List<long> staleLocal = [];
             List<long> staleRemote = [];
+
+            foreach (long tick in _localFrames.Keys)
+            {
+                if (tick < oldestUsefulTick)
+                {
+                    staleLocal.Add(tick);
+                }
+            }
+
+            foreach (long tick in staleLocal)
+            {
+                _localFrames.Remove(tick);
+            }
 
             foreach (long tick in _remoteFrames.Keys)
             {
@@ -662,11 +675,12 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 return null;
             }
 
+            long oldestUsefulTick = Math.Max(0, _playbackTick - RedundantInputCount);
             List<KeyValuePair<long, GamepadInput>> frames = [];
 
             foreach (KeyValuePair<long, GamepadInput> pair in _localFrames)
             {
-                if (pair.Key >= _playbackTick)
+                if (pair.Key >= oldestUsefulTick)
                 {
                     frames.Add(pair);
                 }
@@ -682,9 +696,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             writer.Write((byte)ProtocolVersion);
             writer.Write((byte)frames.Count);
 
-            foreach ((long tick, GamepadInput state) in frames)
+            foreach (KeyValuePair<long, GamepadInput> pair in frames)
             {
-                writer.Write(tick);
+                GamepadInput state = pair.Value;
+                writer.Write(pair.Key);
                 writer.Write((long)state.Buttons);
                 writer.Write(state.LStick.Dx);
                 writer.Write(state.LStick.Dy);
@@ -799,7 +814,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 }
 
                 int count = reader.ReadByte();
-                if (count < 0 || count > RedundantInputCount)
+                if (count > RedundantInputCount)
                 {
                     return;
                 }
