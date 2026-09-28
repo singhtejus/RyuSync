@@ -49,25 +49,29 @@ jobs:
           LIBHAC_REPO="https://github.com/sinjunyoung/RomForge.git"
           LIBHAC_COMMIT="8202eb04c7158906171d07e40a0530f0f5d41f34"
           LIBHAC_VERSION="0.21.1"
+          LIBHAC_DIR="$RUNNER_TEMP/ryusync-libhac"
 
-          rm -rf .ci-romforge .packages
-          mkdir -p .packages
+          rm -rf "$LIBHAC_DIR" "$GITHUB_WORKSPACE/.packages"
+          mkdir -p "$GITHUB_WORKSPACE/.packages"
 
-          git clone --filter=blob:none --no-checkout "$LIBHAC_REPO" .ci-romforge
-          git -C .ci-romforge fetch --depth=1 origin "$LIBHAC_COMMIT"
-          git -C .ci-romforge checkout --detach "$LIBHAC_COMMIT"
-          test "$(git -C .ci-romforge rev-parse HEAD)" = "$LIBHAC_COMMIT"
+          # Keep LibHac outside the RyuSync source tree so RyuSync's
+          # Directory.Packages.props cannot alter LibHac's package semantics.
+          git clone --filter=blob:none --no-checkout "$LIBHAC_REPO" "$LIBHAC_DIR"
+          git -C "$LIBHAC_DIR" fetch --depth=1 origin "$LIBHAC_COMMIT"
+          git -C "$LIBHAC_DIR" checkout --detach "$LIBHAC_COMMIT"
+          test "$(git -C "$LIBHAC_DIR" rev-parse HEAD)" = "$LIBHAC_COMMIT"
 
           # RomForge carries extra NSZ compression code on top of LibHac.
           # Ryujinx does not need that code, and it introduces RomForge-only
           # dependencies. Remove only those additions before packing LibHac.
-          rm -rf .ci-romforge/LibHac/Nsz
+          rm -rf "$LIBHAC_DIR/LibHac/Nsz"
 
-          python - <<'PY'
+          LIBHAC_DIR="$LIBHAC_DIR" python - <<'PY'
+          import os
           from pathlib import Path
           import xml.etree.ElementTree as ET
 
-          project = Path('.ci-romforge/LibHac/LibHac.csproj')
+          project = Path(os.environ['LIBHAC_DIR']) / 'LibHac' / 'LibHac.csproj'
           tree = ET.parse(project)
           root = tree.getroot()
 
@@ -85,17 +89,17 @@ jobs:
           PY
 
           # Only the local feed and nuget.org are available to this build.
-          dotnet restore .ci-romforge/LibHac/LibHac.csproj \
+          dotnet restore "$LIBHAC_DIR/LibHac/LibHac.csproj" \
             --configfile "$GITHUB_WORKSPACE/nuget.ci.config"
 
-          dotnet pack .ci-romforge/LibHac/LibHac.csproj \
+          dotnet pack "$LIBHAC_DIR/LibHac/LibHac.csproj" \
             -c Release --no-restore \
             -o "$GITHUB_WORKSPACE/.packages" \
             -p:PackageId=Ryujinx.LibHac \
             -p:Version="$LIBHAC_VERSION"
 
-          test -f ".packages/Ryujinx.LibHac.${LIBHAC_VERSION}.nupkg"
-          ls -la .packages
+          test -f "$GITHUB_WORKSPACE/.packages/Ryujinx.LibHac.${LIBHAC_VERSION}.nupkg"
+          ls -la "$GITHUB_WORKSPACE/.packages"
 
       - name: Select verified LibHac version for CI
         shell: bash
