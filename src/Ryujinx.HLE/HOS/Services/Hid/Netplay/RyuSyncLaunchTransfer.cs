@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -75,9 +76,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 {
                     _status("Waiting for the host's SSBU save...");
                     RyuSyncLaunchSnapshot snapshot = await _snapshot.Task.WaitAsync(token);
-                    if (snapshot.Manifest.GameVersion != gameVersion || snapshot.Manifest.Settings != settings)
+                    string mismatch = DescribeMismatch(snapshot.Manifest, gameVersion, settings);
+                    if (mismatch != null)
                     {
-                        throw new InvalidDataException("RyuSync requires matching SSBU versions, firmware, language, region, time zone, docked mode and CPU clock rate.");
+                        throw new InvalidDataException(mismatch);
                     }
 
                     _status("Verifying host save and preparing a separate session copy...");
@@ -93,12 +95,45 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 token.ThrowIfCancellationRequested();
                 _status("Host save verified on both computers; launching SSBU.");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 _send("SAVE_ABORT");
-                _status("Save synchronization failed or timed out. Reconnect before retrying.");
+                _status("Save synchronization failed: " + ex.Message + " Reconnect before retrying.");
                 throw;
             }
+        }
+
+        private static string DescribeMismatch(RyuSyncLaunchManifest host, string guestVersion, string guestSettings)
+        {
+            List<string> differences = [];
+            void Compare(string name, string hostValue, string guestValue)
+            {
+                if (hostValue != guestValue)
+                {
+                    differences.Add($"{name}: host = {hostValue}; guest = {guestValue}");
+                }
+            }
+
+            Compare("SSBU version", host.GameVersion, guestVersion);
+            if (host.Settings != guestSettings)
+            {
+                string[] names = ["Firmware", "Language", "Region", "Time zone", "Docked mode", "Emulated CPU speed multiplier (not your computer's CPU)"];
+                string[] hostValues = host.Settings.Split('|');
+                string[] guestValues = guestSettings.Split('|');
+                if (hostValues.Length == names.Length && guestValues.Length == names.Length)
+                {
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        Compare(names[i], hostValues[i], guestValues[i]);
+                    }
+                }
+                else
+                {
+                    differences.Add("Settings format differs. Both players must use the same RyuSync build.");
+                }
+            }
+
+            return differences.Count == 0 ? null : "RyuSync launch settings differ:\n" + string.Join("\n", differences);
         }
 
         // Called only by this connection's control reader, so receive state has one writer.

@@ -23,6 +23,7 @@ internal static class LaunchTests
 
             await CheckTransfer(snapshot, personalSave);
             await CheckMismatch(snapshot);
+            await CheckMismatchDetails(snapshot);
             await CheckDisconnect(snapshot);
             await CheckCorruption(snapshot);
             CheckUnsafeArchives(snapshot);
@@ -112,6 +113,46 @@ internal static class LaunchTests
             await MustFail(guestTask);
             await MustFail(hostTask);
             if (prepared) throw new Exception("Guest installed an incompatible snapshot");
+        }
+    }
+
+    private static async Task CheckMismatchDetails(RyuSyncLaunchSnapshot original)
+    {
+        string[] values = ["20.0.0", "AmericanEnglish", "USA", "UTC", "True", "1"];
+        string[] names = ["Firmware", "Language", "Region", "Time zone", "Docked mode", "Emulated CPU speed multiplier (not your computer's CPU)"];
+        string settings = string.Join('|', values);
+        RyuSyncLaunchSnapshot snapshot = new(original.Manifest with { Settings = settings }, original.SaveArchive);
+        // Each setting alone, plus all settings and the version together.
+        for (int changed = 0; changed <= values.Length; changed++)
+        {
+            bool all = changed == values.Length;
+            string[] guestValues = (string[])values.Clone();
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (all || changed == i) guestValues[i] = "different";
+            }
+            var (host, guest) = Pair();
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+            Task hostTask = host.PrepareAsync("13.0.4", settings, () => snapshot, _ => { }, timeout.Token);
+            Task guestTask = guest.PrepareAsync(all ? "other-version" : "13.0.4", string.Join('|', guestValues),
+                () => snapshot, _ => throw new Exception("Incompatible save installed"), timeout.Token);
+            try
+            {
+                await guestTask;
+                throw new Exception("Mismatched launch succeeded");
+            }
+            catch (InvalidDataException ex)
+            {
+                for (int i = 0; i < values.Length; i++)
+                {
+                    string expected = $"{names[i]}: host = {values[i]}; guest = different";
+                    if (ex.Message.Contains(expected) != (all || changed == i))
+                        throw new Exception("Mismatch report omitted or incorrectly included a setting: " + ex.Message);
+                }
+                if (ex.Message.Contains("SSBU version: host = 13.0.4; guest = other-version") != all)
+                    throw new Exception("Incorrect version mismatch report");
+            }
+            await MustFail(hostTask);
         }
     }
 
