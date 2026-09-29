@@ -1,3 +1,4 @@
+using Ryujinx.Common.Logging;
 using System;
 using System.Buffers.Binary;
 using System.IO;
@@ -62,9 +63,18 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
 
         public void Dispose()
         {
-            if (GuestSaveDirectory != null && Directory.Exists(GuestSaveDirectory))
+            try
             {
-                Directory.Delete(GuestSaveDirectory, recursive: true);
+                if (GuestSaveDirectory != null && Directory.Exists(GuestSaveDirectory))
+                {
+                    Directory.Delete(GuestSaveDirectory, recursive: true);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A lingering handle must not interrupt emulator shutdown. The
+                // personal save is untouched; only this temporary copy remains.
+                Logger.Warning?.Print(LogClass.Hid, $"RyuSync temporary save cleanup failed: {ex.Message}");
             }
         }
     }

@@ -145,7 +145,7 @@ namespace Ryujinx.Ava.Common
 
         public static RyuSyncLaunchSnapshot CreateRyuSyncSnapshot(string version, string settings, long unixTime)
         {
-            UserId userId = new((ulong)_accountManager.LastOpenedUser.UserId.High, (ulong)_accountManager.LastOpenedUser.UserId.Low);
+            LibHac.Fs.UserId userId = new((ulong)_accountManager.LastOpenedUser.UserId.High, (ulong)_accountManager.LastOpenedUser.UserId.Low);
             Dictionary<string, string> directories = new();
             foreach (SaveDataType type in new[] { SaveDataType.Account, SaveDataType.Device })
             {

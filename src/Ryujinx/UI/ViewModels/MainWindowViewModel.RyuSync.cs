@@ -30,7 +30,7 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             ConfigurationState config = ConfigurationState.Instance;
             string settings = string.Join("|", ContentManager.GetCurrentFirmwareVersion()?.VersionString,
-                config.System.Language.Value.Horizon, config.System.Region.Value.Horizon,
+                config.System.Language.Value, config.System.Region.Value,
                 config.System.TimeZone.Value, config.System.EnableDockedMode.Value, config.System.TickScalar.Value);
             long offset = config.System.MatchSystemTime.Value ? 0 : config.System.SystemTimeOffset.Value;
             bool guest = session.Role == RyuSyncRole.Guest;
