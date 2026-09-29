@@ -11,6 +11,7 @@ using System.Text;
 await CheckInputExchange(RyuSyncRole.Host);
 await CheckInputExchange(RyuSyncRole.Guest);
 Console.WriteLine("PASS: host and guest both exchange input and preserve P1/P2 assignments.");
+await LaunchTests.Run();
 
 static async Task CheckInputExchange(RyuSyncRole role)
 {

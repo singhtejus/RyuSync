@@ -44,6 +44,7 @@ using Ryujinx.HLE;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
+using Ryujinx.HLE.HOS.Services.Hid.Netplay;
 using Ryujinx.HLE.HOS.Services.Nfc.AmiiboDecryption;
 using Ryujinx.HLE.UI;
 using Ryujinx.Input.HLE;
@@ -1883,6 +1884,11 @@ namespace Ryujinx.Ava.UI.ViewModels
         public async Task LoadApplication(ApplicationData application, bool startFullscreen = false,
             BlitStruct<ApplicationControlProperty>? customNacpData = null)
         {
+            if (_ryuSyncLaunchPending)
+            {
+                return;
+            }
+
             if (InitializeUserConfig(application))
                 return;
 
@@ -1905,6 +1911,23 @@ namespace Ryujinx.Ava.UI.ViewModels
 
             Logger.RestartTime();
 
+            RyuSyncLaunchContext ryuSyncLaunch;
+            try
+            {
+                _ryuSyncLaunchPending = true;
+                ryuSyncLaunch = await PrepareRyuSyncLaunchAsync(application);
+            }
+            catch (Exception exception)
+            {
+                RyuSyncSession.Instance.Disconnect();
+                await ContentDialogHelper.CreateErrorDialog("RyuSync launch cancelled: " + exception.Message);
+                return;
+            }
+            finally
+            {
+                _ryuSyncLaunchPending = false;
+            }
+
             RendererHostControl = new RendererHost();
 
             AppHost = new AppHost(
@@ -1917,7 +1940,10 @@ namespace Ryujinx.Ava.UI.ViewModels
                 AccountManager,
                 UserChannelPersistence,
                 this,
-                TopLevel);
+                TopLevel)
+            {
+                RyuSyncLaunch = ryuSyncLaunch,
+            };
             
             CancellationTokenSource cts = new CancellationTokenSource();
 

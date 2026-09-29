@@ -21,7 +21,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
     {
         public const int ControlPort = 24872;
         public const int InputPort = 24873;
-        public const int ProtocolVersion = 1;
+        public const int ProtocolVersion = 2;
         public const int DefaultInputDelayFrames = 3;
         public const int MaximumInputDelayFrames = 8;
 
@@ -61,6 +61,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         private int _inputDelayFrames = DefaultInputDelayFrames;
 
         public static RyuSyncSession Instance { get; } = new();
+        public RyuSyncLaunchTransfer LaunchTransfer { get; private set; }
 
         public event Action StateChanged;
         public event Action InvitationReceived;
@@ -519,8 +520,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 _role = role;
                 _remoteDisplayName = remoteAddress?.ToString() ?? "peer";
                 _remoteInputEndpoint = remoteAddress == null ? null : new IPEndPoint(remoteAddress, InputPort);
+                LaunchTransfer = new RyuSyncLaunchTransfer(role, SendControl, SetLaunchStatus);
 
                 NetworkStream stream = client.GetStream();
+                stream.WriteTimeout = 10000;
                 _controlWriter = new StreamWriter(stream, new UTF8Encoding(false), 1024, true)
                 {
                     AutoFlush = true,
@@ -578,6 +581,15 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             string[] parts = line.Split('|');
             string command = parts[0];
             bool invitation = false;
+
+            if (command.StartsWith("SAVE_", StringComparison.Ordinal))
+            {
+                if (IsSessionEstablished)
+                {
+                    LaunchTransfer?.HandleMessage(parts);
+                }
+                return;
+            }
 
             lock (_sync)
             {
@@ -915,6 +927,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 }
 
                 _disconnecting = true;
+                LaunchTransfer?.Cancel();
+                LaunchTransfer = null;
 
                 try
                 {
@@ -975,6 +989,16 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         private void RaiseStateChanged()
         {
             StateChanged?.Invoke();
+        }
+
+        private void SetLaunchStatus(string status)
+        {
+            lock (_sync)
+            {
+                _status = status;
+            }
+            Logger.Info?.Print(LogClass.Hid, "RyuSync: " + status);
+            RaiseStateChanged();
         }
     }
 }

@@ -79,11 +79,11 @@ namespace Ryujinx.Ava.UI.Windows
 
             InviteButton.IsEnabled = !connected && !_session.InvitationPending;
             PeerAddressBox.IsEnabled = InviteButton.IsEnabled;
-            ReadyButton.IsEnabled = connected;
+            ReadyButton.IsEnabled = connected && _session.LaunchTransfer?.Started != true;
             DisconnectButton.IsEnabled = connected;
             ReadyButton.Content = _session.LocalReady ? "Not Ready" : "Ready";
 
-            if (connected && _session.RemoteReady && _session.LocalReady)
+            if (connected && _session.RemoteReady && _session.LocalReady && _session.LaunchTransfer?.Started != true)
             {
                 StatusText.Text = _session.BothGamesStarted
                     ? _session.Status

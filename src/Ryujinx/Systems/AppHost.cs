@@ -38,6 +38,7 @@ using Ryujinx.Graphics.Vulkan;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
+using Ryujinx.HLE.HOS.Services.Hid.Netplay;
 using Ryujinx.Input;
 using Ryujinx.Input.HLE;
 using SkiaSharp;
@@ -134,6 +135,7 @@ namespace Ryujinx.Ava.Systems
         public NpadManager NpadManager { get; }
         public TouchScreenManager TouchScreenManager { get; }
         public HLE.Switch Device { get; set; }
+        public RyuSyncLaunchContext RyuSyncLaunch { get; set; }
 
         public int Width { get; private set; }
         public int Height { get; private set; }
@@ -624,6 +626,12 @@ namespace Ryujinx.Ava.Systems
             NpadManager.Dispose();
             TouchScreenManager.Dispose();
             Device.Dispose();
+            if (RyuSyncLaunch != null)
+            {
+                RyuSyncSession.Instance.Disconnect();
+                RyuSyncLaunch.Dispose();
+                RyuSyncLaunch = null;
+            }
             
             // NOTE: The render loop is allowed to stay alive until the renderer itself is disposed, as it may handle resource dispose.
             // We only need to wait for all commands submitted during the main gpu loop to be processed.
@@ -987,7 +995,14 @@ namespace Ryujinx.Ava.Systems
             };
 
             // Initialize Configuration.
-            Device = new Switch(ConfigurationState.Instance.CreateHleConfiguration()
+            HLE.HleConfiguration configuration = ConfigurationState.Instance.CreateHleConfiguration();
+            configuration.RyuSyncLaunch = RyuSyncLaunch;
+            if (RyuSyncLaunch != null)
+            {
+                configuration.EnableInternetAccess = false;
+            }
+
+            Device = new Switch(configuration
                 .Configure(
                     VirtualFileSystem,
                     _viewModel.LibHacHorizonManager,

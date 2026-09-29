@@ -123,6 +123,12 @@ jobs:
       - name: Restore RyuSync without git.ryujinx.app
         run: dotnet restore src/Ryujinx/Ryujinx.csproj --configfile nuget.ci.config -r ${{ matrix.rid }}
 
+      - name: Test isolated RyuSync save filesystem
+        shell: bash
+        run: |
+          dotnet restore tests/RyuSync.SaveTests/RyuSync.SaveTests.csproj --configfile nuget.ci.config
+          dotnet run --project tests/RyuSync.SaveTests -c Release --no-restore
+
       - name: Publish Ryujinx
         run: dotnet publish src/Ryujinx/Ryujinx.csproj -c Release -r ${{ matrix.rid }} --self-contained true --no-restore -o publish/${{ matrix.rid }}
 

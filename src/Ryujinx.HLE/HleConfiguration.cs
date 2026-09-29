@@ -6,6 +6,7 @@ using Ryujinx.Graphics.GAL;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
+using Ryujinx.HLE.HOS.Services.Hid.Netplay;
 using Ryujinx.HLE.HOS.SystemState;
 using Ryujinx.HLE.UI;
 using System;
@@ -17,6 +18,8 @@ namespace Ryujinx.HLE
     /// </summary>
     public class HleConfiguration
     {
+        public RyuSyncLaunchContext RyuSyncLaunch { get; set; }
+
         /// <summary>
         /// The virtual file system used by the FS service.
         /// </summary>

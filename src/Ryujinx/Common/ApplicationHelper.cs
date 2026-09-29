@@ -20,9 +20,11 @@ using Ryujinx.Common.Helper;
 using Ryujinx.Common.Logging;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
+using Ryujinx.HLE.HOS.Services.Hid.Netplay;
 using Ryujinx.HLE.Loaders.Processes.Extensions;
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -139,6 +141,37 @@ namespace Ryujinx.Ava.Common
 
                 OpenHelper.OpenFolder(workingPath);
             }
+        }
+
+        public static RyuSyncLaunchSnapshot CreateRyuSyncSnapshot(string version, string settings, long unixTime)
+        {
+            UserId userId = new((ulong)_accountManager.LastOpenedUser.UserId.High, (ulong)_accountManager.LastOpenedUser.UserId.Low);
+            Dictionary<string, string> directories = new();
+            foreach (SaveDataType type in new[] { SaveDataType.Account, SaveDataType.Device })
+            {
+                SaveDataFilter filter = SaveDataFilter.Make(RyuSyncLaunchSnapshot.SmashTitleId, type,
+                    type == SaveDataType.Account ? userId : default, saveDataId: default, index: default);
+                Result result = _horizonClient.Fs.FindSaveDataWithFilter(out SaveDataInfo info, SaveDataSpaceId.User, in filter);
+                if (ResultFs.TargetNotFound.Includes(result))
+                {
+                    continue;
+                }
+                result.ThrowIfFailure();
+
+                string root = Path.Combine(VirtualFileSystem.GetNandPath(), $"user/save/{info.SaveDataId:x16}");
+                string path = Path.Combine(root, "0");
+                if (!Directory.Exists(path))
+                {
+                    path = Path.Combine(root, "1");
+                }
+                if (!Directory.Exists(path))
+                {
+                    throw new IOException("The host's registered SSBU save directory is missing.");
+                }
+                directories.Add(type == SaveDataType.Account ? "account" : "device", path);
+            }
+
+            return RyuSyncLaunchSnapshot.Create(version, settings, unixTime, directories);
         }
 
         public static void ExtractSection(string destination, NcaSectionType ncaSectionType, string titleFilePath, string titleName, int programIndex = 0)

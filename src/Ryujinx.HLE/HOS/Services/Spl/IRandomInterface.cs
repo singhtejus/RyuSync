@@ -18,7 +18,14 @@ namespace Ryujinx.HLE.HOS.Services.Spl
         {
             byte[] randomBytes = new byte[context.Request.ReceiveBuff[0].Size];
 
-            _rng.GetBytes(randomBytes);
+            if (context.Process.IsApplication && context.Device.Configuration.RyuSyncLaunch != null)
+            {
+                context.Device.Configuration.RyuSyncLaunch.FillRandom(randomBytes);
+            }
+            else
+            {
+                _rng.GetBytes(randomBytes);
+            }
 
             context.Memory.Write(context.Request.ReceiveBuff[0].Position, randomBytes);
 

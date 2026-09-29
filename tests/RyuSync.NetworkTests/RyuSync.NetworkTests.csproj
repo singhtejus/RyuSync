@@ -7,6 +7,7 @@
   <ItemGroup>
     <!-- Exercise the production session without emulator or external package dependencies. -->
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncSession.cs" Link="RyuSyncSession.cs" />
+    <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncLaunch*.cs" Link="%(Filename)%(Extension)" />
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/HidDevices/Types/GamepadInput.cs" Link="GamepadInput.cs" />
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/HidDevices/Types/JoystickPosition.cs" Link="JoystickPosition.cs" />
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Types/Npad/PlayerIndex.cs" Link="PlayerIndex.cs" />

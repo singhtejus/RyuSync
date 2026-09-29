@@ -217,6 +217,11 @@ namespace Ryujinx.HLE.HOS
 
             systemTime = new TimeSpanType(systemTime.NanoSeconds + internalOffset.NanoSeconds);
 
+            if (device.Configuration.RyuSyncLaunch != null)
+            {
+                systemTime = TimeSpanType.FromSeconds(device.Configuration.RyuSyncLaunch.UnixTime);
+            }
+
             // First init the standard steady clock
             TimeServiceManager.Instance.SetupStandardSteadyClock(TickSource, clockSourceId, TimeSpanType.Zero, TimeSpanType.Zero, TimeSpanType.Zero, false);
             TimeServiceManager.Instance.SetupStandardLocalSystemClock(TickSource, new SystemClockContext(), systemTime.ToSeconds());

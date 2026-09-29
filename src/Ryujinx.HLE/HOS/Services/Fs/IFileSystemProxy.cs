@@ -12,6 +12,7 @@ using LibHac.Tools.FsSystem;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.Common;
 using Ryujinx.Common.Logging;
+using Ryujinx.HLE.HOS.Services.Hid.Netplay;
 using Ryujinx.HLE.HOS.Services.Fs.FileSystemProxy;
 using Ryujinx.Memory;
 using System;
@@ -176,6 +177,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         // DeleteSaveDataFileSystem(u64 saveDataId) -> ()
         public ResultCode DeleteSaveDataFileSystem(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             ulong saveDataId = context.RequestData.ReadUInt64();
 
             return (ResultCode)_baseFileSystemProxy.Get.DeleteSaveDataFileSystem(saveDataId).Value;
@@ -206,6 +208,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         // RegisterSaveDataFileSystemAtomicDeletion(buffer<u64, 5> saveDataIds) -> ()
         public ResultCode RegisterSaveDataFileSystemAtomicDeletion(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             byte[] saveIdBuffer = new byte[context.Request.SendBuff[0].Size];
             context.Memory.Read(context.Request.SendBuff[0].Position, saveIdBuffer);
 
@@ -216,6 +219,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         // DeleteSaveDataFileSystemBySaveDataSpaceId(u8 spaceId, u64 saveDataId) -> ()
         public ResultCode DeleteSaveDataFileSystemBySaveDataSpaceId(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             SaveDataSpaceId spaceId = (SaveDataSpaceId)context.RequestData.ReadInt64();
             ulong saveDataId = context.RequestData.ReadUInt64();
 
@@ -248,6 +252,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         // DeleteSaveDataFileSystemBySaveDataAttribute(u8 spaceId, nn::fs::SaveDataAttribute attribute) -> ()
         public ResultCode DeleteSaveDataFileSystemBySaveDataAttribute(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             SaveDataSpaceId spaceId = (SaveDataSpaceId)context.RequestData.ReadInt64();
             SaveDataAttribute attribute = context.RequestData.ReadStruct<SaveDataAttribute>();
 
@@ -360,6 +365,12 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         {
             SaveDataSpaceId spaceId = (SaveDataSpaceId)context.RequestData.ReadInt64();
             SaveDataAttribute attribute = context.RequestData.ReadStruct<SaveDataAttribute>();
+
+            if (TryOpenRyuSyncSave(context, spaceId, in attribute, readOnly: false))
+            {
+                return ResultCode.Success;
+            }
+
             using SharedRef<IFileSystem> fileSystem = new();
 
             Result result = _baseFileSystemProxy.Get.OpenSaveDataFileSystem(ref fileSystem.Ref, spaceId, in attribute);
@@ -398,6 +409,12 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         {
             SaveDataSpaceId spaceId = (SaveDataSpaceId)context.RequestData.ReadInt64();
             SaveDataAttribute attribute = context.RequestData.ReadStruct<SaveDataAttribute>();
+
+            if (TryOpenRyuSyncSave(context, spaceId, in attribute, readOnly: true))
+            {
+                return ResultCode.Success;
+            }
+
             using SharedRef<IFileSystem> fileSystem = new();
 
             Result result = _baseFileSystemProxy.Get.OpenReadOnlySaveDataFileSystem(ref fileSystem.Ref, spaceId, in attribute);
@@ -410,6 +427,26 @@ namespace Ryujinx.HLE.HOS.Services.Fs
 
             return ResultCode.Success;
         }
+
+        private bool TryOpenRyuSyncSave(ServiceCtx context, SaveDataSpaceId spaceId, in SaveDataAttribute attribute, bool readOnly)
+        {
+            string root = context.Device.Configuration.RyuSyncLaunch?.GuestSaveDirectory;
+            if (root == null || !context.Process.IsApplication || spaceId != SaveDataSpaceId.User ||
+                context.Device.Processes.ActiveApplication.ProgramId != RyuSyncLaunchSnapshot.SmashTitleId ||
+                (attribute.ProgramId != ProgramId.InvalidId && attribute.ProgramId.Value != RyuSyncLaunchSnapshot.SmashTitleId) ||
+                attribute.Type is not (SaveDataType.Account or SaveDataType.Device))
+            {
+                return false;
+            }
+
+            using SharedRef<LibHac.Fs.Fsa.IFileSystem> save = RyuSyncSaveMount.Open(root, attribute.Type, readOnly);
+            using SharedRef<IFileSystem> adapter = FileSystemInterfaceAdapter.CreateShared(in save, true);
+            MakeObject(context, new FileSystemProxy.IFileSystem(ref adapter.Ref));
+            return true;
+        }
+
+        private static bool IsRyuSyncGuest(ServiceCtx context) =>
+            context.Process.IsApplication && context.Device.Configuration.RyuSyncLaunch?.GuestSaveDirectory != null;
 
         [CommandCmif(57)]
         // ReadSaveDataFileSystemExtraDataBySaveDataSpaceId(u8 spaceId, u64 saveDataId) -> (buffer<nn::fs::SaveDataExtraData, 6> extraData)
@@ -521,6 +558,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         // OpenSaveDataInternalStorageFileSystem(u8 spaceId, u64 saveDataId) -> object<nn::fssrv::sf::ISaveDataInfoReader>
         public ResultCode OpenSaveDataInternalStorageFileSystem(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             SaveDataSpaceId spaceId = (SaveDataSpaceId)context.RequestData.ReadInt64();
             ulong saveDataId = context.RequestData.ReadUInt64();
             using SharedRef<IFileSystem> fileSystem = new();
@@ -661,6 +699,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         [CommandCmif(80)]
         public ResultCode OpenSaveDataMetaFile(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             SaveDataSpaceId spaceId = (SaveDataSpaceId)context.RequestData.ReadInt32();
             SaveDataMetaType metaType = (SaveDataMetaType)context.RequestData.ReadInt32();
             SaveDataAttribute attribute = context.RequestData.ReadStruct<SaveDataAttribute>();
@@ -964,6 +1003,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         [CommandCmif(603)]
         public ResultCode CorruptSaveDataFileSystem(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             ulong saveDataId = context.RequestData.ReadUInt64();
 
             return (ResultCode)_baseFileSystemProxy.Get.CorruptSaveDataFileSystem(saveDataId).Value;
@@ -1090,6 +1130,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         [CommandCmif(614)]
         public ResultCode CorruptSaveDataFileSystemBySaveDataSpaceId(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             SaveDataSpaceId spaceId = (SaveDataSpaceId)context.RequestData.ReadInt64();
             ulong saveDataId = context.RequestData.ReadUInt64();
 
@@ -1403,6 +1444,7 @@ namespace Ryujinx.HLE.HOS.Services.Fs
         [CommandCmif(1110)]
         public ResultCode CorruptSaveDataFileSystemByOffset(ServiceCtx context)
         {
+            if (IsRyuSyncGuest(context)) return ResultCode.InvalidInput;
             SaveDataSpaceId spaceId = (SaveDataSpaceId)context.RequestData.ReadInt64();
             ulong saveDataId = context.RequestData.ReadUInt64();
             long offset = context.RequestData.ReadInt64();

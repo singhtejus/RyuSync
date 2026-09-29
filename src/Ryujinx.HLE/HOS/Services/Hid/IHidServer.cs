@@ -905,8 +905,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid
 
             for (int entry = 0; entry < Hid.SharedMemEntryCount; entry++)
             {
-                context.Device.Hid.Npads.Update(emptyGamepadInputs);
-                context.Device.Hid.Npads.UpdateSixAxis(emptySixAxisInputs);
+                // Populate the HID ring buffers, without treating synthetic neutral
+                // entries as physical RyuSync input or advancing its network clock.
+                ((NpadDevices)context.Device.Hid.Npads).Update(emptyGamepadInputs);
+                ((NpadDevices)context.Device.Hid.Npads).UpdateSixAxis(emptySixAxisInputs);
             }
 
             Logger.Stub?.PrintStub(LogClass.ServiceHid, new { appletResourceUserId, revision });

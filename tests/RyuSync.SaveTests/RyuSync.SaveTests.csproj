@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Ryujinx.LibHac" />
+    <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncSaveMount.cs" Link="RyuSyncSaveMount.cs" />
+  </ItemGroup>
+</Project>

@@ -64,7 +64,11 @@
                        TextWrapping="Wrap"
                        FontSize="12"
                        Opacity="0.75" />
-            <TextBlock Text="After both players click Ready, launch the same SSBU version with the same save state on both computers. RyuSync will hold the first instance until both games have reached the launch barrier."
+            <TextBlock Text="After both players click Ready, launch the same SSBU version. The host's saved progress is transferred and verified before launch. The guest plays on a temporary copy; their own save is preserved. Session changes are saved only on the host."
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Opacity="0.75" />
+            <TextBlock Text="Experimental input synchronization: matching saves and startup randomness do not guarantee identical simulation. Cursor or gameplay drift can still occur. Keep game versions, DLC and mods identical."
                        TextWrapping="Wrap"
                        FontSize="12"
                        Opacity="0.75" />
