@@ -21,7 +21,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
     {
         public const int ControlPort = 24872;
         public const int InputPort = 24873;
-        public const int ProtocolVersion = 3; // Requires the SSBU 1.0.0 numbered-update hook on both peers.
+        public const int ProtocolVersion = 4; // Requires battle readiness votes on both peers.
         public const int DefaultInputDelayFrames = 3;
         public const int MaximumInputDelayFrames = 8;
 
@@ -56,6 +56,25 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         private bool _hasCurrentPair;
         private bool? _simulationStepClock;
         private long _lastSimulationStep = -1;
+        private RyuSyncBattleGate _battleGate = new();
+
+        internal void PublishBattle(long step, string state)
+        {
+            bool send;
+            lock (_sync) send = _battleGate.Publish(step, state);
+            if (send) SendControl($"BATTLE|{step}|{state}");
+        }
+
+        internal bool TryDecideBattle(long step, out bool advance)
+        {
+            lock (_sync) return _battleGate.TryDecide(step, out advance);
+        }
+
+        internal void FinishBattle(long step)
+        {
+            PublishBattle(step, "-");
+            lock (_sync) _battleGate.Finish(step);
+        }
 
         private RyuSyncRole _role;
         private string _remoteDisplayName = string.Empty;
@@ -579,6 +598,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
 
         private void InitializeControlConnection(TcpClient client, RyuSyncRole role)
         {
+            client.NoDelay = true;
             IPEndPoint remoteEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
             IPAddress remoteAddress = remoteEndPoint?.Address;
 
@@ -656,6 +676,26 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             string[] parts = line.Split('|');
             string command = parts[0];
             bool invitation = false;
+
+            if (command == "BATTLE")
+            {
+                if (parts.Length != 3 || !long.TryParse(parts[1], out long step) || step < 0 ||
+                    (parts[2] != "-" && (parts[2].Length != 53 ||
+                    !System.Text.RegularExpressions.Regex.IsMatch(parts[2], "^[0-9A-F]{8}(,[0-9A-F]{8}){5}$"))))
+                {
+                    FailSimulation("Invalid RyuSync battle readiness message.");
+                    return;
+                }
+                try
+                {
+                    lock (_sync)
+                    {
+                        if (_accepted && _gameplayClockStarted) _battleGate.Receive(step, parts[2]);
+                    }
+                }
+                catch (InvalidOperationException ex) { FailSimulation(ex.Message); }
+                return;
+            }
 
             if (command.StartsWith("SAVE_", StringComparison.Ordinal))
             {
@@ -736,6 +776,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 _hasCurrentPair = false;
                 _simulationStepClock = null;
                 _lastSimulationStep = -1;
+                _battleGate = new();
                 _nextInputTickTimestamp = Stopwatch.GetTimestamp();
                 _lastUdpSendTimestamp = 0;
                 _gameplayClockStarted = true;
@@ -1041,6 +1082,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 _simulationStepClock = null;
                 _lastSimulationStep = -1;
                 _status = status;
+                _battleGate = new();
 
                 if (stopListener)
                 {

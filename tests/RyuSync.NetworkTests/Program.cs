@@ -8,6 +8,7 @@ using System.Text;
 
 // Test both sides of a real TCP connection and exchange UDP controller packets.
 HookTests.Run();
+BattleGateTests.Run();
 DiagnosticTests.Run();
 await HookRuntimeTests.Run();
 // Reflection avoids adding a production API solely for ephemeral test ports.
@@ -71,6 +72,30 @@ static async Task CheckInputExchange(RyuSyncRole role, int delay, bool simulatio
         await control.WriteLineAsync("READY|1");
         await control.WriteLineAsync("GAME|1");
         await WaitUntil(() => session.GameplayClockStarted, "Launch barrier was not released");
+        if (simulationSteps)
+        {
+            const string state = "00010000,00000000,00000101,00000000,3F800000,00000000";
+            session.PublishBattle(0, state);
+            if (session.TryDecideBattle(0, out _)) throw new Exception("Battle advanced without peer readiness");
+            await control.WriteLineAsync("BATTLE|0|-");
+            await WaitUntil(() => session.TryDecideBattle(0, out _), "Loading vote was not received");
+            session.TryDecideBattle(0, out bool advance);
+            if (advance) throw new Exception("Battle advanced while peer was loading");
+            session.FinishBattle(0);
+            session.PublishBattle(1, state);
+            await control.WriteLineAsync($"BATTLE|1|{state}");
+            await WaitUntil(() => session.TryDecideBattle(1, out bool ready) && ready, "Matching readiness did not release battle");
+            session.FinishBattle(1);
+            using StreamReader received = new(peer.GetStream(), Encoding.UTF8, false, 1024, true);
+            using CancellationTokenSource voteTimeout = new(TimeSpan.FromSeconds(5));
+            for (int step = 0; step < 2; step++)
+            {
+                string line;
+                do { line = await received.ReadLineAsync(voteTimeout.Token); }
+                while (line != null && !line.StartsWith("BATTLE|"));
+                if (line != $"BATTLE|{step}|{state}") throw new Exception("Battle vote was not sent exactly once");
+            }
+        }
         if (session.Status.StartsWith("Synchronized"))
         {
             throw new Exception("Session claimed synchronization before receiving peer input");

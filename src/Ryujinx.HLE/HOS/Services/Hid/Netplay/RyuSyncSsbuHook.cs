@@ -22,6 +22,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         private GamepadInput _p2;
         private bool _inputsValid;
         private bool _diagnosticFailed;
+        private bool _battleSeen;
 
         public RyuSyncSsbuHook(Switch device, ulong mainAddress, RyuSyncDiagnostics diagnostics = null)
         {
@@ -38,6 +39,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 RyuSyncSsbuPatch.InputSvc => RyuSyncSsbuPatch.InputOffset,
                 RyuSyncSsbuPatch.UpdateSvc => RyuSyncSsbuPatch.UpdateOffset,
                 RyuSyncSsbuPatch.CompleteSvc => RyuSyncSsbuPatch.CompleteOffset,
+                RyuSyncSsbuPatch.BattleSvc => RyuSyncSsbuPatch.BattleOffset,
                 _ => -1,
             };
             if (context.IsAarch32 || offset < 0 || address != _mainAddress + (ulong)offset)
@@ -58,6 +60,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 if (id == RyuSyncSsbuPatch.InputSvc)
                 {
                     _sequence.Begin();
+                    _battleSeen = false;
                     long started = Stopwatch.GetTimestamp();
                     bool reportedWait = false;
                     while (!thread.TerminationRequested && context.Running)
@@ -92,8 +95,13 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                     context.SetX(0, thread.Owner.CpuMemory.Read<ulong>(context.GetX(31) + 0x288));
                     CaptureDiagnostics(thread, session, before: true);
                 }
+                else if (id == RyuSyncSsbuPatch.BattleSvc)
+                {
+                    GateBattle(context, thread, session);
+                }
                 else
                 {
+                    session.FinishBattle(_sequence.Step);
                     CaptureDiagnostics(thread, session, before: false);
                     _sequence.Complete();
                     context.SetX(8, thread.Owner.CpuMemory.Read<uint>(context.GetX(26) + 0x4F8));
@@ -108,6 +116,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 if (!_failed)
                 {
                     _failed = true;
+                    _diagnostics?.Fail(ex.Message);
                     Logger.Error?.Print(LogClass.Hid, ex.Message);
                     session.FailSimulation(ex.Message);
                 }
@@ -119,6 +128,40 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 context.StopRunning();
             }
             return true;
+        }
+
+        private void GateBattle(IExecutionContext context, KThread thread, RyuSyncSession session)
+        {
+            _sequence.CheckUpdating();
+            // Restricted processing must continue: it may be needed to finish a scene transition.
+            // The normal path alone advances the battle clock and runs all battle phases.
+            if ((uint)context.GetX(22) != 0)
+            {
+                context.SetX(16, _mainAddress + 0xE7DB7C);
+                return;
+            }
+            if (_battleSeen) throw new InvalidOperationException("SSBU attempted two full battle updates for one input pair.");
+            _battleSeen = true;
+            RyuSyncBattleClock clock = RyuSyncBattleClock.Read(thread.Owner.CpuMemory.Read<uint>, _mainAddress);
+            session.PublishBattle(_sequence.Step, clock.ToString());
+            long started = Stopwatch.GetTimestamp();
+            while (!thread.TerminationRequested && context.Running)
+            {
+                if (!session.IsSessionEstablished || !ReferenceEquals(_connection, session.LaunchTransfer))
+                    throw new InvalidOperationException("RyuSync disconnected while checking battle readiness.");
+                if (session.TryDecideBattle(_sequence.Step, out bool advance))
+                {
+                    // Skip only clock advancement and phase dispatch. Keep the original
+                    // post-battle virtual callback and epilogue on both paths.
+                    context.SetX(16, _mainAddress + (advance ? 0xE7D8D8UL : 0xE7DB94UL));
+                    if (advance) context.SetX(8, _mainAddress + 0x4322000); // replaced adrp
+                    return;
+                }
+                if (Stopwatch.GetTimestamp() - started > 30 * Stopwatch.Frequency)
+                    throw new InvalidOperationException("Timed out checking battle readiness. Export both diagnostics and restart the game.");
+                thread.Sleep(1_000_000);
+            }
+            context.StopRunning();
         }
 
         private void CaptureDiagnostics(KThread thread, RyuSyncSession session, bool before)

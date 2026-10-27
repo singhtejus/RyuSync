@@ -10,7 +10,8 @@ internal static class HookRuntimeTests
 {
     public static async Task Run()
     {
-        foreach (string scenario in new[] { "normal", "cancel", "disconnect", "wrong-thread", "wrong-order" })
+        foreach (string scenario in new[] { "normal", "cancel", "disconnect", "wrong-thread", "wrong-order",
+            "battle-ready", "battle-loading", "battle-restricted", "battle-cancel", "battle-mismatch" })
         {
             using TcpListener listener = new(IPAddress.Loopback, 0);
             listener.Start();
@@ -20,11 +21,13 @@ internal static class HookRuntimeTests
             RyuSyncSession session = RyuSyncSession.Instance;
             typeof(RyuSyncSession).GetField("_controlClient", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, client);
             typeof(RyuSyncSession).GetField("_accepted", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, true);
+            RyuSyncBattleGate gate = new();
+            typeof(RyuSyncSession).GetField("_battleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, gate);
             try
             {
                 const ulong main = 0x8504000;
                 Switch device = new();
-                RyuSyncDiagnostics diagnostics = scenario == "normal" ? new("hook-test", RyuSyncRole.Host) : null;
+                RyuSyncDiagnostics diagnostics = new("hook-test", RyuSyncRole.Host);
                 RyuSyncSsbuHook hook = new(device, main, diagnostics);
                 KThread thread = new();
                 TestExecutionContext context = new();
@@ -81,6 +84,31 @@ internal static class HookRuntimeTests
                 }
                 Call(RyuSyncSsbuPatch.UpdateOffset, RyuSyncSsbuPatch.UpdateSvc);
                 Require(context.GetX(0) == 0x12345678, "Application argument was not restored");
+                if (scenario.StartsWith("battle-"))
+                {
+                    context.SetX(22, scenario == "battle-restricted" ? 1UL : 0UL);
+                    original[22] = context.GetX(22);
+                    thread.OnSleep = () =>
+                    {
+                        if (scenario == "battle-cancel" || !session.IsSessionEstablished)
+                            thread.TerminationRequested = true;
+                        else
+                            gate.Receive(0, scenario == "battle-loading" ? "-" :
+                                scenario == "battle-mismatch" ? "different" :
+                                RyuSyncBattleClock.Read(thread.Owner.CpuMemory.Read<uint>, main).ToString());
+                    };
+                    Call(RyuSyncSsbuPatch.BattleOffset, RyuSyncSsbuPatch.BattleSvc);
+                    if (scenario is "battle-cancel" or "battle-mismatch")
+                    {
+                        Require(!context.Running, "A cancelled or mismatched battle was allowed to run");
+                        continue;
+                    }
+                    ulong expected = scenario == "battle-restricted" ? 0xE7DB7CUL :
+                        scenario == "battle-loading" ? 0xE7DB94UL : 0xE7D8D8UL;
+                    Require(context.GetX(16) == main + expected, "Battle gate selected the wrong continuation");
+                    if (scenario == "battle-ready") Require(context.GetX(8) == main + 0x4322000, "Battle adrp was not restored");
+                    original[16] = context.GetX(16);
+                }
                 Call(RyuSyncSsbuPatch.CompleteOffset, RyuSyncSsbuPatch.CompleteSvc);
                 Require(context.GetX(8) == uint.MaxValue, "Replaced word load was not zero-extended");
                 for (int i = 1; i < 32; i++)

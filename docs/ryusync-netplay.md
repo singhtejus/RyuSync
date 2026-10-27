@@ -80,8 +80,33 @@ and macOS arm64.
 
 The hook calls `TryGetInputsForSimulationStep`. It consumes one pair per numbered
 step, latches repeated requests and leaves a missing pair pending. It rejects
-skipped steps and mixing step requests with the computer-clock path. Protocol 3
+skipped steps and mixing step requests with the computer-clock path. Protocol 4
 rejects older peers; both sides must use this behavior.
+
+### Battle readiness (experimental)
+
+The paired recordings showed identical inputs but unequal battle advancement,
+starting before the reported hit mismatch. The hook now checks readiness before
+SSBU 1.0.0 advances its battle clock and dispatches the full battle phases.
+Both peers publish a vote for the current numbered application update. If one
+finishes that update without reaching full battle processing, it publishes a
+negative vote. The other skips clock advancement and the full phase dispatch for
+that update. Loading, restricted transition processing, and the original
+post-battle callback continue. This avoids waiting for a battle callback that a
+loading peer cannot reach. Inputs remain paired by the existing update number.
+
+When both reach full processing, their six observed battle-clock words must
+match before proceeding. A mismatch stops the session and records both values in
+the diagnostic error. No counters are overwritten and no existing desync is
+repaired. Restart the game after a failure; export both diagnostics first.
+
+This version exchanges a small TCP vote per application update and waits for
+the peer during full battle processing. TCP sends immediately rather than
+batching small packets. Network latency can therefore reduce throughput even
+with buffered inputs. This deliberately prioritizes checking battle progression;
+it is not the final low-latency design. It still needs two-PC gameplay validation,
+including loading, rematches, pause, and slow-motion effects. Equal clock words
+do not establish equal fighter state or deterministic worker execution.
 
 ## Verification
 
@@ -91,7 +116,8 @@ The diagnostic build keeps the last 8192 completed application updates in memory
 (about 137 seconds at 60 updates/sec). It records the actual P1/P2 input pair and
 six battle-clock words immediately before and after the existing application call.
 The clock addresses are verified against the supported executable. No additional
-breakpoints, game-memory writes, network messages or per-update disk writes are used.
+breakpoints, game-memory writes, network messages or per-update disk writes are used
+by diagnostic recording itself; the battle readiness gate separately sends votes.
 Small read/record overhead remains; this is not a claim of zero timing impact.
 
 Reproduce with Zelda versus Ganondorf on both PCs. Prefer the same named stage and

@@ -11,6 +11,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         public const int InputSvc = 0x7F00;
         public const int UpdateSvc = 0x7F01;
         public const int CompleteSvc = 0x7F02;
+        public const int BattleSvc = 0x7F03;
+        public const int BattleOffset = 0xE7D8D0;
         public const int InputOffset = 0x278EC1C;
         public const int UpdateOffset = 0x278F07C;
         public const int CompleteOffset = 0x278F084;
@@ -32,6 +34,11 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             (0x278F088, 0x11000508, 0x11000508),
             (0x278F08C, 0xB904FB48, 0xB904FB48),
             (0x278F1AC, 0x97FF7925, 0xD503201F), // nop: no second update with cached input
+            // Gate before battle-clock writes and phase dispatch. x16 is the ABI scratch register.
+            (BattleOffset, 0x35001576, Svc(BattleSvc)),
+            (0xE7D8D4, 0xB001A528, 0xD61F0200), // br x16: original path or post-battle housekeeping
+            (0xE7DB00, 0x350003F6, 0x17FFFF74), // alternate cleanup path must also enter the gate
+            (0xE7DB04, 0x17FFFF74, 0x17FFFF74),
             // Read-only guards for the diagnostic clock addresses and their writers.
             (0xE7D848, 0x9001A4E8, 0x9001A4E8),
             (0xE7D84C, 0xB94CC116, 0xB94CC116),

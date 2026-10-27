@@ -258,7 +258,7 @@ namespace Ryujinx.HLE.Loaders.Processes
                 }
                 // Never load translations of the unpatched game or persist patched translations.
                 diskCacheEnabled = false;
-                diskCacheSelector = "ryusync-numbered-v1";
+                diskCacheSelector = "ryusync-battle-v2";
             }
 
             LibHac.Result resultCode = metaLoader.GetNpdm(out LibHac.Loader.Npdm npdm);

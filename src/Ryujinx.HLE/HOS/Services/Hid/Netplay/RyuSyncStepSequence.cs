@@ -10,6 +10,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         public void Begin() => Move(0, 1);
         public void InputsCommitted() => Move(1, 2);
         public void BeforeUpdate() => Move(2, 3);
+        public void CheckUpdating()
+        {
+            if (_phase != 3) throw new InvalidOperationException("Battle processing occurred outside the numbered application update.");
+        }
 
         public void Complete()
         {

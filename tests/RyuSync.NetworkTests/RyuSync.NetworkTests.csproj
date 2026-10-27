@@ -11,6 +11,7 @@
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncStepSequence.cs" Link="RyuSyncStepSequence.cs" />
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncSsbuHook.cs" Link="RyuSyncSsbuHook.cs" />
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncDiagnostics.cs" Link="RyuSyncDiagnostics.cs" />
+    <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncBattleGate.cs" Link="RyuSyncBattleGate.cs" />
     <Compile Include="../../src/Ryujinx.Memory/InvalidMemoryRegionException.cs" Link="InvalidMemoryRegionException.cs" />
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/Netplay/RyuSyncLaunch*.cs" Link="%(Filename)%(Extension)" />
     <Compile Include="../../src/Ryujinx.HLE/HOS/Services/Hid/HidDevices/Types/GamepadInput.cs" Link="GamepadInput.cs" />
