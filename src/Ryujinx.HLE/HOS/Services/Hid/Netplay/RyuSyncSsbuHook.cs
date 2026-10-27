@@ -40,11 +40,34 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 RyuSyncSsbuPatch.UpdateSvc => RyuSyncSsbuPatch.UpdateOffset,
                 RyuSyncSsbuPatch.CompleteSvc => RyuSyncSsbuPatch.CompleteOffset,
                 RyuSyncSsbuPatch.BattleSvc => RyuSyncSsbuPatch.BattleOffset,
+                RyuSyncSsbuPatch.ResetFirstSvc => RyuSyncSsbuPatch.ResetFirstOffset,
+                RyuSyncSsbuPatch.ResetSecondSvc => RyuSyncSsbuPatch.ResetSecondOffset,
                 _ => -1,
             };
             if (context.IsAarch32 || offset < 0 || address != _mainAddress + (ulong)offset)
             {
                 return false;
+            }
+
+            if (id is RyuSyncSsbuPatch.ResetFirstSvc or RyuSyncSsbuPatch.ResetSecondSvc)
+            {
+                // Observe any guest thread without enforcing the application-thread
+                // barrier. This path must not wait, consume input, or suppress a reset.
+                ulong target = context.GetX(id == RyuSyncSsbuPatch.ResetFirstSvc ? 25 : 9) + 4;
+                try
+                {
+                    if (_diagnostics != null)
+                        _diagnostics.AddReset(new(_sequence.Step, _sequence.DiagnosticPhase, offset,
+                            thread.ThreadUid, ReferenceEquals(thread, _thread), target - _mainAddress,
+                            context.GetX(30) - _mainAddress,
+                            RyuSyncBattleClock.Read(thread.Owner.CpuMemory.Read<uint>, _mainAddress)));
+                }
+                catch (InvalidMemoryRegionException)
+                {
+                    _diagnostics?.Fail("Could not observe the battle counter reset.");
+                }
+                thread.Owner.CpuMemory.Write(target, 0U); // original str wzr, [x25/x9, #4]
+                return true;
             }
 
             RyuSyncSession session = RyuSyncSession.Instance;

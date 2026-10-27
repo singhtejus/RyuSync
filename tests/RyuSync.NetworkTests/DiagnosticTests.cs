@@ -18,10 +18,15 @@ internal static class DiagnosticTests
             capture.Add(new(i, true, default, default, clock, clock));
         }
         CultureInfo previous = CultureInfo.CurrentCulture;
+        for (int i = 0; i < 131; i++) capture.AddReset(new(i, 3, 0x2B9D6FC, 32, false, 0x64548A4, 0x1234, clock));
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ar-SA");
             string text = capture.Export();
+            string[] resets = text.Split('\n').Where(line => line.StartsWith("# reset|")).ToArray();
+            // One header plus the last 128 actual events.
+            if (resets.Length != 129 || !resets[1].StartsWith("# reset|3|3|") ||
+                !resets[^1].StartsWith("# reset|130|3|")) throw new Exception("Reset retention or ordering failed");
             string[] samples = text.Split('\n').Where(line => line.Length > 0 && char.IsAsciiDigit(line[0])).ToArray();
             if (samples.Length != RyuSyncDiagnostics.Capacity || !samples[0].StartsWith("7|1|") ||
                 !samples[^1].StartsWith($"{(RyuSyncDiagnostics.Capacity + 6).ToString(CultureInfo.InvariantCulture)}|1|"))

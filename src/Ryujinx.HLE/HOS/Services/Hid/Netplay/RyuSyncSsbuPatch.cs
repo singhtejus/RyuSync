@@ -13,6 +13,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         public const int CompleteSvc = 0x7F02;
         public const int BattleSvc = 0x7F03;
         public const int BattleOffset = 0xE7D8D0;
+        public const int ResetFirstSvc = 0x7F04;
+        public const int ResetSecondSvc = 0x7F05;
+        public const int ResetFirstOffset = 0x2B9D6FC;
+        public const int ResetSecondOffset = 0x2BA2B74;
         public const int InputOffset = 0x278EC1C;
         public const int UpdateOffset = 0x278F07C;
         public const int CompleteOffset = 0x278F084;
@@ -21,6 +25,9 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         // accounting, but remove its extra application call (which reused input).
         internal static readonly (int Offset, uint Expected, uint Replacement)[] Instructions =
         [
+            // Observe the original counter reset; the hook performs the same store.
+            (ResetFirstOffset, 0xB900073F, Svc(ResetFirstSvc)),
+            (ResetSecondOffset, 0xB900053F, Svc(ResetSecondSvc)),
             (0x278EC0C, 0xB9430915, 0x52800035), // ldr w21 -> mov w21, #1
             (0x278EC14, 0x540023EB, 0x540023EB),
             (0x278EC18, 0x540006C1, 0x540006C1),

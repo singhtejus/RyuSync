@@ -5,6 +5,7 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
     internal sealed class RyuSyncStepSequence
     {
         private int _phase;
+        public int DiagnosticPhase => System.Threading.Volatile.Read(ref _phase);
         public long Step { get; private set; }
 
         public void Begin() => Move(0, 1);

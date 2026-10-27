@@ -21,6 +21,9 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
     internal readonly record struct RyuSyncDiagnosticSample(long Step, bool InputsValid,
         GamepadInput P1, GamepadInput P2, RyuSyncBattleClock Before, RyuSyncBattleClock After);
 
+    internal readonly record struct RyuSyncResetSample(long ObservedStep, int Phase, int Site,
+        ulong Thread, bool UpdateThread, ulong Target, ulong LinkRegister, RyuSyncBattleClock Before);
+
     // No network traffic, file I/O or log formatting on the emulated update thread.
     // These scalars are observations, not a checksum of the complete game state.
     public sealed class RyuSyncDiagnostics
@@ -34,6 +37,13 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
         private int _count;
         private long _total;
         private string _error = string.Empty;
+        private readonly RyuSyncResetSample[] _resets = new RyuSyncResetSample[128];
+        private long _resetTotal;
+
+        internal void AddReset(RyuSyncResetSample sample)
+        {
+            lock (_sync) _resets[_resetTotal++ % _resets.Length] = sample;
+        }
 
         internal RyuSyncDiagnostics(string sessionId, RyuSyncRole role)
         {
@@ -62,6 +72,8 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             RyuSyncDiagnosticSample[] samples;
             long total;
             string error;
+            RyuSyncResetSample[] resets;
+            long resetTotal;
             lock (_sync)
             {
                 samples = new RyuSyncDiagnosticSample[_count];
@@ -69,6 +81,11 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
                 for (int i = 0; i < _count; i++) samples[i] = _samples[(start + i) % Capacity];
                 total = _total;
                 error = _error;
+                resetTotal = _resetTotal;
+                int resetCount = (int)Math.Min(resetTotal, _resets.Length);
+                resets = new RyuSyncResetSample[resetCount];
+                for (int i = 0; i < resetCount; i++)
+                    resets[i] = _resets[(resetTotal - resetCount + i) % _resets.Length];
             }
 
             StringBuilder output = new();
@@ -78,6 +95,10 @@ namespace Ryujinx.HLE.HOS.Services.Hid.Netplay
             output.AppendLine($"build={RyuSyncSsbuPatch.BuildId}");
             output.AppendLine(FormattableString.Invariant($"total={total}"));
             output.AppendLine($"error={error}");
+            output.AppendLine(FormattableString.Invariant($"# reset_total={resetTotal}"));
+            output.AppendLine("# reset|observed_update|phase|site_relative_to_main|thread|is_update_thread|target_relative_to_main|link_relative_to_main|before_clock");
+            foreach (var reset in resets)
+                output.AppendLine(FormattableString.Invariant($"# reset|{reset.ObservedStep}|{reset.Phase}|{reset.Site:X}|{reset.Thread}|{(reset.UpdateThread ? 1 : 0)}|{reset.Target:X}|{reset.LinkRegister:X}|{reset.Before}"));
             output.AppendLine("# step|inputs_valid|p1(buttons,lx,ly,rx,ry)|p2|before(flags,c04,slow,c0c,rate,mode)|after");
             foreach (var sample in samples)
             {

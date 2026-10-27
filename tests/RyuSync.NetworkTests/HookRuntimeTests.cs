@@ -118,6 +118,32 @@ internal static class HookRuntimeTests
                 Require(commits == 2 && context.Running, "Completing an update consumed another input pair");
                 Require(diagnostics.Export().Contains("\n0|0|"), "Hook omitted diagnostics or marked missing input metadata as valid");
 
+                if (scenario == "normal")
+                {
+                    KThread worker = new() { ThreadUid = 32 };
+                    foreach (var pair in thread.Owner.CpuMemory.Values) worker.Owner.CpuMemory.Values[pair.Key] = pair.Value;
+                    foreach (var (site, svc, register) in new[] {
+                        (RyuSyncSsbuPatch.ResetFirstOffset, RyuSyncSsbuPatch.ResetFirstSvc, 25),
+                        (RyuSyncSsbuPatch.ResetSecondOffset, RyuSyncSsbuPatch.ResetSecondSvc, 9) })
+                    {
+                        context.SetX(register, main + 0x64548A0);
+                        context.SetX(30, main + 0x1234);
+                        ulong[] saved = (ulong[])context.Registers.Clone();
+                        foreach (KThread resetThread in new[] { thread, worker })
+                        {
+                            resetThread.Owner.CpuMemory.Values[main + 0x64548A4] = 214U;
+                            int sleeps = resetThread.Sleeps;
+                            Require(hook.Handle(context, resetThread, main + (ulong)site, svc), "Reset hook was not handled");
+                            Require(resetThread.Owner.CpuMemory.Read<uint>(main + 0x64548A4) == 0, "Reset store was suppressed");
+                            Require(resetThread.Owner.CpuMemory.Read<uint>(main + 0x64548AC) == 1, "Reset changed the other counter");
+                            Require(resetThread.Sleeps == sleeps && context.Registers.SequenceEqual(saved), "Reset observer waited or changed registers");
+                        }
+                    }
+                    string exported = diagnostics.Export();
+                    Require(exported.Contains("# reset_total=4") && exported.Contains("|32|0|64548A4|1234|") &&
+                        exported.Contains("|28|1|64548A4|1234|"), "Reset records lost thread identity or address");
+                }
+
                 bool Call(int offset, int id) => hook.Handle(context, thread, main + (ulong)offset, id);
             }
             finally

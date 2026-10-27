@@ -26,6 +26,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
     internal sealed class KThread
     {
         public bool TerminationRequested { get; set; }
+        public ulong ThreadUid { get; set; } = 28;
         public TestProcess Owner { get; } = new();
         public int Sleeps { get; private set; }
         public Action OnSleep { get; set; } = () => { };
@@ -46,6 +47,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
     {
         public Dictionary<ulong, object> Values { get; } = new();
         public T Read<T>(ulong address) => (T)Values[address];
+        public void Write<T>(ulong address, T value) => Values[address] = value;
     }
 }
 

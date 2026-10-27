@@ -112,6 +112,18 @@ do not establish equal fighter state or deterministic worker execution.
 
 ### Capturing gameplay divergence
 
+Reset diagnostics additionally retain the last 128 executions of two verified
+instructions that clear counter04 while leaving counter0c unchanged. They are
+exported as `# reset|...` comment records, so existing comparison tools still
+read the update samples. Each record includes the instruction offset, guest
+thread, whether it is the application thread, observed outer update/phase, target,
+link register, and the clock before the original store. The original store still
+executes; this observation neither holds nor changes the transition. For another
+thread, the observed outer update/phase is context, not a synchronized timestamp.
+These two sites are candidates, not an exhaustive list of every possible write.
+The link register is the current return address, not a reconstructed call stack.
+The additional SVCs can affect scheduling; this is a diagnostic build, not a fix.
+
 The diagnostic build keeps the last 8192 completed application updates in memory
 (about 137 seconds at 60 updates/sec). It records the actual P1/P2 input pair and
 six battle-clock words immediately before and after the existing application call.

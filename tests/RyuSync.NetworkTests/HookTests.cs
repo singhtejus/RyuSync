@@ -5,7 +5,7 @@ internal static class HookTests
 {
     public static void Run()
     {
-        byte[] text = new byte[0x278F1B0];
+        byte[] text = new byte[0x2BA2B78];
         foreach (var instruction in RyuSyncSsbuPatch.Instructions)
         {
             Write(instruction.Offset, instruction.Expected);
@@ -36,6 +36,8 @@ internal static class HookTests
             (RyuSyncSsbuPatch.UpdateOffset, RyuSyncSsbuPatch.UpdateSvc),
             (RyuSyncSsbuPatch.CompleteOffset, RyuSyncSsbuPatch.CompleteSvc),
             (RyuSyncSsbuPatch.BattleOffset, RyuSyncSsbuPatch.BattleSvc),
+            (RyuSyncSsbuPatch.ResetFirstOffset, RyuSyncSsbuPatch.ResetFirstSvc),
+            (RyuSyncSsbuPatch.ResetSecondOffset, RyuSyncSsbuPatch.ResetSecondSvc),
         })
         {
             uint op = Read(offset);
